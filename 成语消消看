@@ -1,0 +1,147 @@
+# _*_ coding:utf-8 _*_
+from aip import AipOcr
+import requests
+import subprocess
+from io import BytesIO
+from PIL import Image
+import random
+import os
+import sys
+import time
+import re
+
+def baidu(question, answers):
+    url = 'https://www.baidu.com/s'
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.1 (KHTML, like Gecko) Chrome/22.0.1207.1 Safari/537.1'
+    }
+    data = {
+        'wd': question
+    }
+    res = requests.get(url, params=data, headers=headers)
+    res.encoding = 'utf-8'
+    html = res.text
+    file = open('test.txt','w',encoding='utf-8')  
+    file.write(html)
+    file.close()
+    regstr1=r'(['
+    dictionary = {}
+    target=""
+    for i in range(answers["words_result_num"]):
+        for j in answers["words_result"][i]["chars"]:
+            dictionary[j["char"]]=(j["location"]["left"],j["location"]["top"])
+            regstr1+=j["char"]
+    regstr1+=']{4})'
+    print("regstr1:",regstr1)
+    matchObj1 =  re.findall( regstr1, html)
+    
+    new_dict = {}
+    for i in matchObj1:
+        new_dict[i] = matchObj1.count(i)
+    print("\n\n")
+    print(new_dict)
+    print("\n\n")
+    #带重复字的成语判断会有问题，比如高高兴兴，一心一意等
+    point=[[0,0],[0,0],[0,0],[0,0]]
+    if new_dict:
+        target=max(new_dict, key=new_dict.get)
+        print(target)
+        point=[dictionary[target[0]],dictionary[target[1]],dictionary[target[2]],dictionary[target[3]]]
+    else:
+        html=read_file_as_str("成语大全.txt")
+        matchObj1 =  re.findall( regstr1, html)
+        for i in matchObj1:
+            new_dict[i] = matchObj1.count(i)
+            print(i)
+        print("\n\n")
+        
+        if new_dict:
+            target=max(new_dict, key=new_dict.get)
+            print(target)
+            point=[dictionary[target[0]],dictionary[target[1]],dictionary[target[2]],dictionary[target[3]]]
+    return point
+
+def click(point):
+    cmd = 'adb shell input swipe %s %s %s %s %s' % (
+        point[0],
+        point[1],
+        point[2] + random.randint(0, 3),
+        point[3] + random.randint(0, 1),
+        100
+    )
+    os.system(cmd)
+
+'''读取图片 '''
+def get_file_content(filePath):
+    with open(filePath, 'rb') as fp:
+        return fp.read()
+def read_file_as_str(file_path):
+    # 判断路径文件存在
+    if not os.path.isfile(file_path):
+        raise TypeError(file_path + " does not exist")
+    all_the_text = open(file_path,encoding='utf-8').read()
+    # print type(all_the_text)
+    return all_the_text
+    
+def run():
+    print("准备答题！")    
+    APP_ID = ''
+    API_KEY = ''
+    SECRET_KEY = ''
+    client = AipOcr(APP_ID, API_KEY, SECRET_KEY)
+    while True:
+        input("输入回车开始答题：")
+        process = subprocess.Popen('adb shell screencap -p', shell=True, stdout=subprocess.PIPE)
+        screenshot = process.stdout.read()
+        screenshot = screenshot.replace(b'\r\n', b'\n')
+        with open('test.png','wb') as f:
+            f.write(screenshot)
+        # 把图片存到内存
+        img_fb = BytesIO()
+        img_fb.write(screenshot)
+        # 图片处理
+        img = Image.open(img_fb)    
+        text_img = img.crop((30, 180, 720, 760))  # 切字
+        title_img = img.crop((30, 790, 720,920))  # 切标题 
+        text_img.save("test.png","png")
+        title_img.save("title.png","png")
+        os.system("pause")
+        text = get_file_content('test.png')
+        title= get_file_content('title.png')   
+        '''如果有可选参数 '''
+        options = {}
+        options["recognize_granularity"] = "small"
+        options["detect_direction"] = "false"
+        options["vertexes_location"] = "false"
+        options["probability"] = "false"
+        
+        ''' 带参数调用通用文字识别（含位置高精度版） '''
+        #text1=client.accurate(text, options)
+        text1=client.general(text, options)
+        #time.sleep(1)
+        for key, value in text1.items():
+            print (key, ' value : ', value)
+        print("\n\n")
+        
+        title1=client.basicGeneral(title)
+        for key, value in title1.items():
+            print (key, ' value : ', value)
+        res = baidu(question=title1["words_result"][0]["words"], answers=text1)       
+        
+        cmd = 'adb shell input swipe %d %d %d %d %d' % (res[0][0]+30,res[0][1]+180,res[0][0]+30,res[0][1]+180,10)
+        os.system(cmd)
+        #time.sleep(0.1)
+        cmd = 'adb shell input swipe %d %d %d %d %d' % (res[1][0]+30,res[1][1]+180,res[1][0]+30,res[1][1]+180,10)
+        os.system(cmd)
+        #time.sleep(0.1)
+        cmd = 'adb shell input swipe %d %d %d %d %d' % (res[2][0]+30,res[2][1]+180,res[2][0]+30,res[2][1]+180,10)
+        os.system(cmd)
+        #time.sleep(0.1)
+        cmd = 'adb shell input swipe %d %d %d %d %d' % (res[3][0]+30,res[3][1]+180,res[3][0]+30,res[3][1]+180,10)
+        os.system(cmd)
+        #time.sleep(0.1)
+        #print("\n\n")
+        #print(text1[0])
+        
+if __name__ == '__main__':
+    run()
